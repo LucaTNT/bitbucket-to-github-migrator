@@ -37,6 +37,20 @@ python3 bitbucket-to-github-migrator.py
 
 If a `.env` file exists in the project root, it will be loaded automatically.
 
+## Update Existing Repos
+To update local git origins from Bitbucket to GitHub based on the migration state:
+```bash
+python3 update-git-origins.py
+```
+
+This script:
+- Recursively scans for git repos under a path you provide.
+- Uses `migration_state.json` to map Bitbucket repos to GitHub.
+- Defaults to the same repo name on GitHub if not found in state (asks for a GitHub owner).
+- Updates `origin` to the new GitHub SSH URL.
+- If a `pushurl` exists and matches `origin`, it updates it too.
+- If a `pushurl` exists and differs, it skips updating it and reports conflicts at the end.
+
 You will be prompted for:
 - Atlassian account email (for Bitbucket REST API auth)
 - Bitbucket username (for Git auth)
