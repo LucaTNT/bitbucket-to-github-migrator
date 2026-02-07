@@ -14,7 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
-
+from origin_updater import apply_updates, build_updates, list_git_repos, recap_updates
 BITBUCKET_API = "https://api.bitbucket.org/2.0"
 GITHUB_API = "https://api.github.com"
 STATE_FILE = "migration_state.json"
@@ -35,7 +35,6 @@ class RepoPlan:
     target_owner: str
     target_name: str
     status: str = "pending"
-
 
 def eprint(*args: object) -> None:
     print(*args, file=sys.stderr)
@@ -209,6 +208,20 @@ def fetch_bitbucket_workspaces(user_email: str, api_token: str) -> List[str]:
                 workspaces.append(slug)
         url = data.get("next")
     return workspaces
+
+
+def prompt_workspaces_manual() -> List[str]:
+    print(
+        textwrap.dedent(
+            """
+We couldn't list workspaces automatically. You can:
+- Re-enter a user API token that supports the /workspaces endpoint
+- Or enter workspace slugs manually (comma-separated)
+"""
+        ).strip()
+    )
+    raw = prompt("Workspace slugs (comma-separated, e.g., myteam,easypodcast)")
+    return [slug.strip() for slug in raw.split(",") if slug.strip()]
 
 
 def fetch_bitbucket_repos(user_email: str, api_token: str, workspace: str) -> List[BitbucketRepo]:
@@ -644,6 +657,23 @@ def main() -> None:
         print(f"{plan.source.workspace}/{plan.source.slug} -> {plan.target_owner}/{plan.target_name}")
     print(f"\nReport saved to {report_path}")
 
+    if prompt_yes_no("\nUpdate local git origins now?", default=False):
+        state = load_state()
+        root = os.getcwd()
+        updates = build_updates(list_git_repos(root), state, default_owner)
+        if not updates:
+            print("No Bitbucket origins found to update.")
+        else:
+            recap_updates(updates)
+            if prompt_yes_no("Apply these origin updates?", default=False):
+                conflicts = apply_updates(updates)
+                if conflicts:
+                    print("\nPushurl conflicts (left unchanged):")
+                    for item in conflicts:
+                        print(f"- {item.path}: {item.current_pushurl}")
+            else:
+                print("Skipped local origin updates.")
+
 
 if __name__ == "__main__":
     try:
@@ -653,15 +683,3 @@ if __name__ == "__main__":
     except Exception as exc:
         eprint(f"Error: {exc}")
         sys.exit(1)
-def prompt_workspaces_manual() -> List[str]:
-    print(
-        textwrap.dedent(
-            """
-We couldn't list workspaces automatically. You can:
-- Re-enter a user API token that supports the /workspaces endpoint
-- Or enter workspace slugs manually (comma-separated)
-"""
-        ).strip()
-    )
-    raw = prompt("Workspace slugs (comma-separated, e.g., myteam,easypodcast)")
-    return [slug.strip() for slug in raw.split(",") if slug.strip()]
